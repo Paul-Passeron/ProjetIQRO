@@ -1,10 +1,8 @@
-from typing import Generator
-
 import numpy as np
 import numpy.typing as npt
 
 
-class MaxOrSat:
+class MaxXorSat:
     def __init__(self, A: npt.NDArray[np.bool_], b: npt.NDArray[np.bool_]):
         self.m = A.shape[0]
         self.n = A.shape[1]
@@ -55,6 +53,28 @@ class MaxOrSat:
 
         return dict
 
+    def polynome(self, xs: list[int]) -> int:
+        assert len(xs) == self.n
+        res = 0
+        bitstrings = boolean_combinations(self.n)
+        for bitstring in bitstrings:
+            if is_odd(bitstring):
+                current_sum = 1
+                for a, b in zip(bitstring, xs):
+                    if a:
+                        current_sum *= b
+                    else:
+                        current_sum *= 1 - b
+                res += current_sum
+        return res
+
+
+def is_odd(bitstring: list[int]) -> bool:
+    res = 0
+    for x in bitstring:
+        res += x
+    return res % 2 == 1
+
 
 def boolean_combinations(n: int) -> list[list[int]]:
     if n == 0:
@@ -70,9 +90,19 @@ def boolean_combinations(n: int) -> list[list[int]]:
 if __name__ == "__main__":
     A = np.array([[1, 1, 1, 0], [1, 0, 1, 0], [1, 0, 0, 0]])
     b = np.array([0, 1, 0])
-    max_or_sat = MaxOrSat(A, b)
-    x = max_or_sat.solve()
-    d = max_or_sat.solve_all()
+    max_xor_sat = MaxXorSat(A, b)
+    x = max_xor_sat.solve()
+    d = max_xor_sat.solve_all()
     print(x)
     print(d)
+
+    p = max_xor_sat.polynome([1, 0, 1, 1])
+    print(p)
+    p = max_xor_sat.polynome([1, 1, 1, 1])
+    print(p)
+    p = max_xor_sat.polynome([0, 0, 1, 1])
+    print(p)
+    p = max_xor_sat.polynome([0, 0, 0, 1])
+    print(p)
+
     # If no assert exception then it worked out
