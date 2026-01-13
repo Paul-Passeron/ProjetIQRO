@@ -13,6 +13,7 @@ qc.append(mcx_gate, [0, 1, 2, 3])
 qc.draw("mpl")
 
 
+# Question 1
 class MaxXorSat:
     def __init__(self, A: npt.NDArray[np.bool_], b: npt.NDArray[np.bool_]):
         self.m = A.shape[0]
@@ -23,6 +24,7 @@ class MaxXorSat:
         self.A = A
         self.b = b
 
+    # Question 2
     def solve(self) -> tuple[npt.NDArray[np.bool_], int]:
         best_fit = None
         max_res = 0
@@ -45,6 +47,7 @@ class MaxXorSat:
         assert best_fit is not None
         return (best_fit, max_res)
 
+    # Question 2 (Version avec tous les résultats)
     def solve_all(self, min_level: int = 0) -> dict[int, tuple[npt.NDArray[np.bool_]]]:
         dict = {}
         for candidate in boolean_combinations(self.n):
@@ -64,6 +67,7 @@ class MaxXorSat:
 
         return dict
 
+    # Question 4
     def polynome(self, xs: list[int]) -> int:
         assert len(xs) == self.n
         res = 0
@@ -97,7 +101,7 @@ def boolean_combinations(n: int) -> list[list[int]]:
     return res
 
 
-# Testing MaxOrSat
+# Testing MaxXorSat
 if __name__ == "__main__":
     A = np.array([[1, 1, 1, 0], [1, 0, 1, 0], [1, 0, 0, 0]])
     b = np.array([0, 1, 0])
@@ -115,5 +119,3 @@ if __name__ == "__main__":
     print(p)
     p = max_xor_sat.polynome([0, 0, 0, 1])
     print(p)
-
-    # If no assert exception then it worked out
