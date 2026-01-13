@@ -1,12 +1,15 @@
-from qiskit import QuantumCircuit
-from qiskit.circuit.library import HGate, MCXGate
+import operator
+from functools import reduce
+from typing import Generator
+
 import numpy as np
 import numpy.typing as npt
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import HGate, MCXGate
 
- 
 mcx_gate = MCXGate(3)
 hadamard_gate = HGate()
- 
+
 qc = QuantumCircuit(4)
 qc.append(hadamard_gate, [0])
 qc.append(mcx_gate, [0, 1, 2, 3])
@@ -57,18 +60,17 @@ class MaxXorSat:
                 log_and = np.logical_and(line, res)
                 current_res: bool = False
                 for x in log_and:
-                    current_res = current_res != x
+                    current_res = current_res != bool(x)
                 current_fit += int(current_res == self.b[i])
                 if current_fit >= min_level:
                     if current_fit not in dict.keys():
                         dict[current_fit] = [res]
                     else:
                         dict[current_fit].append(res)
-
         return dict
 
     # Question 4
-    def polynome(self, xs: list[int]) -> int:
+    def polynome_bitstrings(self, xs: list[int]) -> int:
         assert len(xs) == self.n
         res = 0
         bitstrings = boolean_combinations(self.n)
@@ -83,6 +85,10 @@ class MaxXorSat:
                 res += current_sum
         return res
 
+    def polynome(self, xs: list[int]) -> int:
+        prod: int = reduce(operator.mul, map(lambda x: 1 - 2 * x, xs))
+        return (1 - prod) // 2
+
 
 def is_odd(bitstring: list[int]) -> bool:
     res = 0
@@ -91,14 +97,13 @@ def is_odd(bitstring: list[int]) -> bool:
     return res % 2 == 1
 
 
-def boolean_combinations(n: int) -> list[list[int]]:
+def boolean_combinations(n: int) -> Generator[list[int], None, None]:
     if n == 0:
-        return [[]]
-    res = []
-    for combo in boolean_combinations(n - 1):
-        res.append(combo + [0])
-        res.append(combo + [1])
-    return res
+        yield []
+    else:
+        for combo in boolean_combinations(n - 1):
+            yield (combo + [0])
+            yield (combo + [1])
 
 
 # Testing MaxXorSat
@@ -107,15 +112,17 @@ if __name__ == "__main__":
     b = np.array([0, 1, 0])
     max_xor_sat = MaxXorSat(A, b)
     x = max_xor_sat.solve()
-    d = max_xor_sat.solve_all()
     print(x)
-    print(d)
+    # d = max_xor_sat.solve_all()
+    # print(d)
 
     p = max_xor_sat.polynome([1, 0, 1, 1])
-    print(p)
+    print("Expect 1: ", p)
     p = max_xor_sat.polynome([1, 1, 1, 1])
-    print(p)
+    print("Expect 0: ", p)
     p = max_xor_sat.polynome([0, 0, 1, 1])
-    print(p)
+    print("Expect 0: ", p)
     p = max_xor_sat.polynome([0, 0, 0, 1])
-    print(p)
+    print("Expect 1: ", p)
+
+    exit(0)
