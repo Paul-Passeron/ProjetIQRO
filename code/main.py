@@ -11,3 +11,11 @@ class MaxOrSat:
             assert x.shape[0] == n
         self.A = A
         self.b = b
+
+
+# Testing MaxOrSat
+if __name__ == "__main__":
+    A = np.array([[True, True], [False, True]])
+    b = np.array([False, True])
+    max_or_sat = MaxOrSat(A, b)
+    # If no assert exception then it worked out
