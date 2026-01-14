@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import HGate, MCXGate
+from qiskit.quantum_info import SparsePauliOp
 
 mcx_gate = MCXGate(3)
 hadamard_gate = HGate()
@@ -88,6 +89,21 @@ class MaxXorSat:
     def polynome(self, xs: list[int]) -> int:
         prod: int = reduce(operator.mul, map(lambda x: 1 - 2 * x, xs))
         return (1 - prod) // 2
+    
+    # Hamiltonien Hc
+    def hamiltonian(self):
+        pauli_list = []
+        for j in range(self.m):
+            one_indices = np.where(A[j, :] == 1)[0]
+            pauli_str_list = ["I"] * self.n
+            for idx in one_indices:
+                pauli_str_list[self.n - 1 - idx] = "Z"
+            pauli_str = "".join(pauli_str_list)
+            nj = len(one_indices)
+            coeff = 0.5 * ((-1) ** (nj+b[j]))
+            pauli_list.append((pauli_str, coeff))
+        hamiltonian = SparsePauliOp.from_list(pauli_list)
+        return hamiltonian
 
 
 def is_odd(bitstring: list[int]) -> bool:
@@ -124,5 +140,8 @@ if __name__ == "__main__":
     print("Expect 0: ", p)
     p = max_xor_sat.polynome([0, 0, 0, 1])
     print("Expect 1: ", p)
+
+    hamiltonien = max_xor_sat.hamiltonian()
+    print("Hamiltonien : \n", hamiltonien)
 
     exit(0)
