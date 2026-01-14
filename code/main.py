@@ -99,9 +99,10 @@ class MaxXorSat:
             for idx in one_indices:
                 pauli_str_list[self.n - 1 - idx] = "Z"
             pauli_str = "".join(pauli_str_list)
-            nj = len(one_indices)
-            coeff = 0.5 * ((-1) ** (nj+b[j]))
+            coeff = -0.5 * ((-1) ** (b[j]))
             pauli_list.append((pauli_str, coeff))
+            id_str = "I" * self.n
+            pauli_list.append((id_str, 0.5))
         hamiltonian = SparsePauliOp.from_list(pauli_list)
         return hamiltonian
 
