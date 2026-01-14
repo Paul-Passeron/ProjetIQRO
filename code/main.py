@@ -7,6 +7,10 @@ import numpy.typing as npt
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import HGate, MCXGate
 from qiskit.quantum_info import SparsePauliOp
+from qiskit.circuit.library import QAOAAnsatz
+from qiskit.primitives import StatevectorEstimator
+from scipy.optimize import minimize
+from qiskit.quantum_info import Statevector
 
 mcx_gate = MCXGate(3)
 hadamard_gate = HGate()
@@ -91,7 +95,7 @@ class MaxXorSat:
         return (1 - prod) // 2
     
     # Hamiltonien Hc
-    def hamiltonian(self):
+    def create_hamiltonian(self):
         pauli_list = []
         for j in range(self.m):
             one_indices = np.where(A[j, :] == 1)[0]
@@ -104,7 +108,55 @@ class MaxXorSat:
             id_str = "I" * self.n
             pauli_list.append((id_str, 0.5))
         hamiltonian = SparsePauliOp.from_list(pauli_list)
-        return hamiltonian
+        self.hamiltonian = hamiltonian
+
+    
+    def solve_with_qaoa(self, reps):
+        self.create_hamiltonian()
+        hamiltonian = self.hamiltonian
+        qaoa_ansatz = QAOAAnsatz(cost_operator=hamiltonian, reps=reps)
+
+        num_params = qaoa_ansatz.num_parameters
+
+        np.random.seed(8)
+        init_params = 2 * np.pi * np.random.rand(num_params)
+
+        def cost_func(params):
+            pub = [qaoa_ansatz, [hamiltonian], [params]]
+            estimator = StatevectorEstimator()
+            result = estimator.run(pubs=[pub]).result()
+            cost = result[0].data.evs[0]
+
+            return cost
+        
+        best_params = minimize(cost_func, init_params,args=(), method="COBYLA")
+
+        optimal_circuit = qaoa_ansatz.assign_parameters(best_params.x)
+        final_state = Statevector(optimal_circuit)
+        probs = final_state.probabilities_dict()
+
+        #print(probs.items())
+
+        #sort to have the best solution
+        sorted_probs = sorted(probs.items(), key=lambda item: item[1], reverse=True)
+        
+        #print best solution
+        best_sol, best_sol_prob = sorted_probs[0]
+        #qiskit inverts the order of qubits
+        best_sol = best_sol[::-1]
+
+        print("Best Solution x:", best_sol)
+        print("Probability :", best_sol_prob)
+
+        best_x = [int(i) for i in best_sol]
+        score = 0
+        for j in range(self.m):
+            value = sum(A[j][k]*best_x[k] for k in range(self.n))%2
+            if value == self.b[j]:
+                score += 1
+        print("Nombre de contrainte satisfaite :", score, "sur ", self.m)
+
+        
 
 
 def is_odd(bitstring: list[int]) -> bool:
@@ -142,7 +194,9 @@ if __name__ == "__main__":
     p = max_xor_sat.polynome([0, 0, 0, 1])
     print("Expect 1: ", p)
 
-    hamiltonien = max_xor_sat.hamiltonian()
-    print("Hamiltonien : \n", hamiltonien)
+    max_xor_sat.create_hamiltonian()
+    print("Hamiltonien : \n", max_xor_sat.hamiltonian)
+
+    max_xor_sat.solve_with_qaoa(1)
 
     exit(0)
