@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import operator
 from functools import reduce
 from typing import Generator
@@ -5,12 +7,10 @@ from typing import Generator
 import numpy as np
 import numpy.typing as npt
 from qiskit import QuantumCircuit
-from qiskit.circuit.library import HGate, MCXGate
-from qiskit.quantum_info import SparsePauliOp
-from qiskit.circuit.library import QAOAAnsatz
+from qiskit.circuit.library import HGate, MCXGate, QAOAAnsatz
 from qiskit.primitives import StatevectorEstimator
+from qiskit.quantum_info import SparsePauliOp, Statevector
 from scipy.optimize import minimize
-from qiskit.quantum_info import Statevector
 
 mcx_gate = MCXGate(3)
 hadamard_gate = HGate()
@@ -31,9 +31,11 @@ class MaxXorSat:
             assert x.shape[0] == self.n
         self.A = A
         self.b = b
+        self._hamiltonian = None
+        self._qaoa_ansatz = None
 
     # Question 2
-    def solve(self) -> tuple[npt.NDArray[np.bool_], int]:
+    def solve_enumerate(self) -> tuple[list[bool], int]:
         best_fit = None
         max_res = 0
 
@@ -47,13 +49,13 @@ class MaxXorSat:
                     current_res = current_res != x
                 current_fit += int(current_res == self.b[i])
             if current_fit == self.m:
-                return (res, self.m)
+                return (list(res), self.m)
             if current_fit > max_res:
                 best_fit = res
                 max_res = current_fit
 
         assert best_fit is not None
-        return (best_fit, max_res)
+        return (list(best_fit), max_res)
 
     # Question 2 (Version avec tous les résultats)
     def solve_all(self, min_level: int = 0) -> dict[int, tuple[npt.NDArray[np.bool_]]]:
@@ -93,70 +95,75 @@ class MaxXorSat:
     def polynome(self, xs: list[int]) -> int:
         prod: int = reduce(operator.mul, map(lambda x: 1 - 2 * x, xs))
         return (1 - prod) // 2
-    
+
     # Hamiltonien Hc
     def create_hamiltonian(self):
-        pauli_list = []
-        for j in range(self.m):
-            one_indices = np.where(A[j, :] == 1)[0]
-            pauli_str_list = ["I"] * self.n
-            for idx in one_indices:
-                pauli_str_list[self.n - 1 - idx] = "Z"
-            pauli_str = "".join(pauli_str_list)
-            coeff = -0.5 * ((-1) ** (b[j]))
-            pauli_list.append((pauli_str, coeff))
-            id_str = "I" * self.n
-            pauli_list.append((id_str, 0.5))
-        hamiltonian = SparsePauliOp.from_list(pauli_list)
-        self.hamiltonian = hamiltonian
+        if self._hamiltonian is None:
+            pauli_list = []
+            for j in range(self.m):
+                one_indices = np.where(A[j, :] == 1)[0]
+                pauli_str_list = ["I"] * self.n
+                for idx in one_indices:
+                    pauli_str_list[self.n - 1 - idx] = "Z"
+                pauli_str = "".join(pauli_str_list)
+                coeff = -0.5 * ((-1) ** (b[j]))
+                pauli_list.append((pauli_str, coeff))
+                id_str = "I" * self.n
+                pauli_list.append((id_str, 0.5))
+            self._hamiltonian = SparsePauliOp.from_list(pauli_list)
 
-    
-    def solve_with_qaoa(self, reps):
-        self.create_hamiltonian()
-        hamiltonian = self.hamiltonian
-        qaoa_ansatz = QAOAAnsatz(cost_operator=hamiltonian, reps=reps)
+    def hamiltonian(self) -> SparsePauliOp:
+        if self._hamiltonian is None:
+            self.create_hamiltonian()
+            assert self._hamiltonian is not None
+        return self._hamiltonian
 
+    def create_circuit(self, reps: int):
+        if self._qaoa_ansatz is None:
+            self._qaoa_ansatz = QAOAAnsatz(cost_operator=self.hamiltonian(), reps=reps)
+
+    def qaoa_ansatz(self, reps: int) -> QAOAAnsatz:
+        if self._qaoa_ansatz is None:
+            self.create_circuit(reps)
+            assert self._qaoa_ansatz is not None
+        return self._qaoa_ansatz
+
+    def solve_with_qaoa(self, reps: int):
+        qaoa_ansatz = self.qaoa_ansatz(reps)
         num_params = qaoa_ansatz.num_parameters
 
         np.random.seed(8)
         init_params = 2 * np.pi * np.random.rand(num_params)
 
-        def cost_func(params):
-            pub = [qaoa_ansatz, [hamiltonian], [params]]
-            estimator = StatevectorEstimator()
-            result = estimator.run(pubs=[pub]).result()
-            cost = result[0].data.evs[0]
+        pub = [qaoa_ansatz, [self.hamiltonian()], [init_params]]
 
+        def cost_func(params):
+            estimator = StatevectorEstimator()
+            result = estimator.run(pubs=[pub]).result()  # pyright: ignore[reportArgumentType]
+            cost = result[0].data.evs[0]  # pyright: ignore[reportAttributeAccessIssue]
             return cost
-        
-        best_params = minimize(cost_func, init_params,args=(), method="COBYLA")
+
+        best_params = minimize(cost_func, init_params, args=(), method="COBYLA")
 
         optimal_circuit = qaoa_ansatz.assign_parameters(best_params.x)
+        assert optimal_circuit is not None
+
         final_state = Statevector(optimal_circuit)
         probs = final_state.probabilities_dict()
 
-        #print(probs.items())
-
-        #sort to have the best solution
+        # sort to have the best solution
         sorted_probs = sorted(probs.items(), key=lambda item: item[1], reverse=True)
-        
-        #print best solution
-        best_sol, best_sol_prob = sorted_probs[0]
-        #qiskit inverts the order of qubits
+
+        best_sol, _ = sorted_probs[0]
+        # qiskit inverts the order of qubits
         best_sol = best_sol[::-1]
-
-        print("Best Solution x:", best_sol)
-        print("Probability :", best_sol_prob)
-
         best_x = [int(i) for i in best_sol]
         score = 0
         for j in range(self.m):
-            value = sum(A[j][k]*best_x[k] for k in range(self.n))%2
+            value = sum(A[j][k] * best_x[k] for k in range(self.n)) % 2
             if value == self.b[j]:
                 score += 1
-        print("Nombre de contrainte satisfaite :", score, "sur ", self.m)
-
-        
+        return (best_x, score)
 
 
 def is_odd(bitstring: list[int]) -> bool:
@@ -180,11 +187,8 @@ if __name__ == "__main__":
     A = np.array([[1, 1, 1, 0], [1, 0, 1, 0], [1, 0, 0, 0]])
     b = np.array([0, 1, 0])
     max_xor_sat = MaxXorSat(A, b)
-    x = max_xor_sat.solve()
+    x = max_xor_sat.solve_enumerate()
     print(x)
-    # d = max_xor_sat.solve_all()
-    # print(d)
-
     p = max_xor_sat.polynome([1, 0, 1, 1])
     print("Expect 1: ", p)
     p = max_xor_sat.polynome([1, 1, 1, 1])
@@ -197,6 +201,6 @@ if __name__ == "__main__":
     max_xor_sat.create_hamiltonian()
     print("Hamiltonien : \n", max_xor_sat.hamiltonian)
 
-    max_xor_sat.solve_with_qaoa(1)
+    print(max_xor_sat.solve_with_qaoa(1))
 
     exit(0)
