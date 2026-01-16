@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import operator
+import time
 from functools import reduce
+from itertools import product
 from typing import Generator
 
 import numpy as np
@@ -101,12 +103,12 @@ class MaxXorSat:
         if self._hamiltonian is None:
             pauli_list = []
             for j in range(self.m):
-                one_indices = np.where(A[j, :] == 1)[0]
+                one_indices = np.where(self.A[j, :] == 1)[0]
                 pauli_str_list = ["I"] * self.n
                 for idx in one_indices:
                     pauli_str_list[self.n - 1 - idx] = "Z"
                 pauli_str = "".join(pauli_str_list)
-                coeff = -0.5 * ((-1) ** (b[j]))
+                coeff = -0.5 * ((-1) ** (self.b[j]))
                 pauli_list.append((pauli_str, coeff))
                 id_str = "I" * self.n
                 pauli_list.append((id_str, 0.5))
@@ -160,7 +162,7 @@ class MaxXorSat:
         best_x = [int(i) for i in best_sol]
         score = 0
         for j in range(self.m):
-            value = sum(A[j][k] * best_x[k] for k in range(self.n)) % 2
+            value = sum(self.A[j][k] * best_x[k] for k in range(self.n)) % 2
             if value == self.b[j]:
                 score += 1
         return (best_x, score)
@@ -182,25 +184,53 @@ def boolean_combinations(n: int) -> Generator[list[int], None, None]:
             yield (combo + [1])
 
 
+def random_max_xor_sat(n: int, m: int) -> MaxXorSat:
+    random_A: npt.NDArray[np.bool_] = np.random.choice([True, False], size=(m, n))
+    random_B: npt.NDArray[np.bool_] = np.random.choice([True, False], size=m)
+    return MaxXorSat(random_A, random_B)
+
+
+def eval_qaoa(samples: int = 100, max_size: int = 10):
+    nms = product(*([range(2, max_size)] * 2))
+    reps = 10
+    d: dict[tuple[int, int], dict[str, dict[str, float | tuple[list[bool], int]]]] = {}
+    for n, m in nms:
+        print("n =", n, "m =", m)
+        for _ in range(samples):
+            prob = random_max_xor_sat(n, m)
+            results = {"qaoa": {}, "enumerate": {}, "grover": {}}
+
+            results["enumerate"]["start"] = time.time()
+            results["enumerate"]["solution"] = prob.solve_enumerate()
+            results["enumerate"]["end"] = time.time()
+
+            results["qaoa"]["start"] = time.time()
+            results["qaoa"]["solution"] = prob.solve_with_qaoa(reps)
+            results["qaoa"]["end"] = time.time()
+
+            d[(n, m)] = results
+    return d
+
+
 # Testing MaxXorSat
 if __name__ == "__main__":
-    A = np.array([[1, 1, 1, 0], [1, 0, 1, 0], [1, 0, 0, 0]])
-    b = np.array([0, 1, 0])
-    max_xor_sat = MaxXorSat(A, b)
-    x = max_xor_sat.solve_enumerate()
-    print(x)
-    p = max_xor_sat.polynome([1, 0, 1, 1])
-    print("Expect 1: ", p)
-    p = max_xor_sat.polynome([1, 1, 1, 1])
-    print("Expect 0: ", p)
-    p = max_xor_sat.polynome([0, 0, 1, 1])
-    print("Expect 0: ", p)
-    p = max_xor_sat.polynome([0, 0, 0, 1])
-    print("Expect 1: ", p)
+    print(eval_qaoa(10, 5))
 
-    max_xor_sat.create_hamiltonian()
-    print("Hamiltonien : \n", max_xor_sat.hamiltonian)
+    # A = np.array([[1, 1, 1, 0], [1, 0, 1, 0], [1, 0, 0, 0]])
+    # b = np.array([0, 1, 0])
+    # max_xor_sat = MaxXorSat(A, b)
+    # x = max_xor_sat.solve_enumerate()
+    # print(x)
+    # p = max_xor_sat.polynome([1, 0, 1, 1])
+    # print("Expect 1: ", p)
+    # p = max_xor_sat.polynome([1, 1, 1, 1])
+    # print("Expect 0: ", p)
+    # p = max_xor_sat.polynome([0, 0, 1, 1])
+    # print("Expect 0: ", p)
+    # p = max_xor_sat.polynome([0, 0, 0, 1])
+    # print("Expect 1: ", p)
 
-    print(max_xor_sat.solve_with_qaoa(1))
+    # max_xor_sat.create_hamiltonian()
+    # print("Hamiltonien : \n", max_xor_sat.hamiltonian)
 
-    exit(0)
+    # print(max_xor_sat.solve_with_qaoa(1))
