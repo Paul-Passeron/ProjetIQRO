@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import operator
+import pprint
 import time
 from functools import reduce
 from itertools import product
@@ -51,13 +52,13 @@ class MaxXorSat:
                     current_res = current_res != x
                 current_fit += int(current_res == self.b[i])
             if current_fit == self.m:
-                return (list(res), self.m)
+                return (list(map(lambda x: bool(x), res)), self.m)
             if current_fit > max_res:
                 best_fit = res
                 max_res = current_fit
 
         assert best_fit is not None
-        return (list(best_fit), max_res)
+        return (list(map(lambda x: bool(x), best_fit)), max_res)
 
     # Question 2 (Version avec tous les résultats)
     def solve_all(self, min_level: int = 0) -> dict[int, tuple[npt.NDArray[np.bool_]]]:
@@ -130,7 +131,7 @@ class MaxXorSat:
             assert self._qaoa_ansatz is not None
         return self._qaoa_ansatz
 
-    def solve_with_qaoa(self, reps: int):
+    def solve_with_qaoa(self, reps: int) -> tuple[list[bool], int]:
         qaoa_ansatz = self.qaoa_ansatz(reps)
         num_params = qaoa_ansatz.num_parameters
 
@@ -159,7 +160,7 @@ class MaxXorSat:
         best_sol, _ = sorted_probs[0]
         # qiskit inverts the order of qubits
         best_sol = best_sol[::-1]
-        best_x = [int(i) for i in best_sol]
+        best_x = [bool(int(i)) for i in best_sol]
         score = 0
         for j in range(self.m):
             value = sum(self.A[j][k] * best_x[k] for k in range(self.n)) % 2
@@ -191,30 +192,45 @@ def random_max_xor_sat(n: int, m: int) -> MaxXorSat:
 
 
 def eval_max_xor_sat(samples: int = 100, max_size: int = 10):
+    from joblib import Parallel, delayed
+
     nms = product(*([range(2, max_size)] * 2))
     reps = 10
-    d: dict[tuple[int, int], dict[str, dict[str, float | tuple[list[bool], int]]]] = {}
-    for n, m in nms:
-        print("n =", n, "m =", m)
+    d: dict[
+        tuple[int, int], list[dict[str, dict[str, float | tuple[list[bool], int]]]]
+    ] = {}
+
+    def eval_single(nm):
+        n, m = nm
+        res = []
         for _ in range(samples):
             prob = random_max_xor_sat(n, m)
-            results = {"qaoa": {}, "enumerate": {}, "grover": {}}
+            results = {"qaoa": {}, "enumerate": {}}
 
-            results["enumerate"]["start"] = time.time()
+            start = time.time()
             results["enumerate"]["solution"] = prob.solve_enumerate()
-            results["enumerate"]["end"] = time.time()
+            end = time.time()
+            results["enumerate"]["elapsed"] = end - start
 
-            results["qaoa"]["start"] = time.time()
+            start = time.time()
             results["qaoa"]["solution"] = prob.solve_with_qaoa(reps)
-            results["qaoa"]["end"] = time.time()
+            end = time.time()
+            results["qaoa"]["elapsed"] = end - start
 
-            d[(n, m)] = results
+            res.append(results)
+        return ((n, m), res)
+
+    vals = Parallel(n_jobs=16)(delayed(eval_single)(nm) for nm in nms)
+
+    for (n, m), results in vals:  # pyright: ignore[reportGeneralTypeIssues]
+        d[(n, m)] = results
+
     return d
 
 
 # Testing MaxXorSat
 if __name__ == "__main__":
-    print(eval_max_xor_sat(10, 5))
+    pprint.pp(eval_max_xor_sat(2, 4))
 
     # A = np.array([[1, 1, 1, 0], [1, 0, 1, 0], [1, 0, 0, 0]])
     # b = np.array([0, 1, 0])
