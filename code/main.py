@@ -190,7 +190,7 @@ def random_max_xor_sat(n: int, m: int) -> MaxXorSat:
     return MaxXorSat(random_A, random_B)
 
 
-def eval_qaoa(samples: int = 100, max_size: int = 10):
+def eval_max_xor_sat(samples: int = 100, max_size: int = 10):
     nms = product(*([range(2, max_size)] * 2))
     reps = 10
     d: dict[tuple[int, int], dict[str, dict[str, float | tuple[list[bool], int]]]] = {}
@@ -214,7 +214,7 @@ def eval_qaoa(samples: int = 100, max_size: int = 10):
 
 # Testing MaxXorSat
 if __name__ == "__main__":
-    print(eval_qaoa(10, 5))
+    print(eval_max_xor_sat(10, 5))
 
     # A = np.array([[1, 1, 1, 0], [1, 0, 1, 0], [1, 0, 0, 0]])
     # b = np.array([0, 1, 0])
