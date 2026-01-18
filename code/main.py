@@ -386,4 +386,5 @@ def eval_max_xor_sat(samples: int = 100, max_size: int = 10, qaoa_reps=5):
 
 # Testing MaxXorSat
 if __name__ == "__main__":
+    # Pipe the output to "results.dict" to use viz.py
     pprint.pp(eval_max_xor_sat(1, 6, 2))
