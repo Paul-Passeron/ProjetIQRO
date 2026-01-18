@@ -154,8 +154,7 @@ class MaxXorSat:
             cost = result[0].data.evs[0]  # pyright: ignore[reportAttributeAccessIssue]
             return cost
 
-        # On enregistre le temps si besoin
-        t0 = time.time()
+        
         # On obtient les bons paramètres en optimisant
         best_params = minimize(cost_func, init_params, args=(), method="COBYLA")
 
@@ -163,6 +162,8 @@ class MaxXorSat:
         optimal_circuit = qaoa_ansatz.assign_parameters(best_params.x)
         assert optimal_circuit is not None
 
+        # On enregistre le temps si besoin
+        t0 = time.time()
         final_state = Statevector(optimal_circuit)
         probs = final_state.probabilities_dict()
         t = time.time() - t0
@@ -401,4 +402,4 @@ if __name__ == "__main__":
 
     # exécution des 3 algorithmes sur un jeu de données d'instances aléatoires de taille allant de (2,2) à (9,9) attention c'est un long run !
     # Pipe the output to "results.dict" to use viz.py
-    # pprint.pp(eval_max_xor_sat(1, 6, 2))
+    # pprint.pp(eval_max_xor_sat(1, 10, 2))
