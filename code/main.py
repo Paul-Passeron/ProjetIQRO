@@ -10,19 +10,11 @@ from typing import Generator
 import numpy as np
 import numpy.typing as npt
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
-from qiskit.circuit.library import HGate, MCXGate, QAOAAnsatz
+from qiskit.circuit.library import QAOAAnsatz
 from qiskit.primitives import StatevectorEstimator
 from qiskit.primitives import StatevectorSampler as Sampler
 from qiskit.quantum_info import SparsePauliOp, Statevector
 from scipy.optimize import minimize
-
-mcx_gate = MCXGate(3)
-hadamard_gate = HGate()
-
-qc = QuantumCircuit(4)
-qc.append(hadamard_gate, [0])
-qc.append(mcx_gate, [0, 1, 2, 3])
-qc.draw("mpl")
 
 
 # Question 1
@@ -37,6 +29,7 @@ class MaxXorSat:
         self.b = b
         self._hamiltonian = None
         self._qaoa_ansatz = None
+        self.solves: dict[int, dict[int, list[npt.NDArray[np.bool_]]]] = {}
 
     # Question 2
     def solve_enumerate(self) -> tuple[list[bool], int]:
@@ -63,6 +56,8 @@ class MaxXorSat:
 
     # Question 2 (Version avec tous les résultats)
     def solve_all(self, min_level: int = 0) -> dict[int, list[npt.NDArray[np.bool_]]]:
+        if min_level in self.solves:
+            return self.solves[min_level]
         dict = {}
         for candidate in boolean_combinations(self.n):
             res = np.array(candidate)
@@ -78,6 +73,7 @@ class MaxXorSat:
                         dict[current_fit] = [res]
                     else:
                         dict[current_fit].append(res)
+        self.solves[min_level] = dict
         return dict
 
     # Question 4
@@ -121,6 +117,8 @@ class MaxXorSat:
                 pauli_list.append((id_str, 0.5))
             self._hamiltonian = SparsePauliOp.from_list(pauli_list)
 
+    # Cette fonction renvoie la version mémoisée du Hamiltonien
+    # si elle existe et la crée sinon
     def hamiltonian(self) -> SparsePauliOp:
         if self._hamiltonian is None:
             self.create_hamiltonian()
@@ -144,37 +142,46 @@ class MaxXorSat:
         qaoa_ansatz = self.qaoa_ansatz(reps)
         num_params = qaoa_ansatz.num_parameters
 
+        # Paramètres initiaux, à optimiser
         init_params = 2 * np.pi * np.random.rand(num_params)
+
+        estimator = StatevectorEstimator()
 
         # fonction à optimiser pour l'optimiseur classique pour obtenir les meilleurs paramètres pour qaoa
         def cost_func(params):
             pub = [qaoa_ansatz, [self.hamiltonian()], [params]]
-            estimator = StatevectorEstimator()
             result = estimator.run(pubs=[pub]).result()  # pyright: ignore[reportArgumentType]
             cost = result[0].data.evs[0]  # pyright: ignore[reportAttributeAccessIssue]
             return cost
 
+        # On enregistre le temps si besoin
         t0 = time.time()
+        # On obtient les bons paramètres en optimisant
         best_params = minimize(cost_func, init_params, args=(), method="COBYLA")
 
+        # On crée le réel circuit optimal
         optimal_circuit = qaoa_ansatz.assign_parameters(best_params.x)
         assert optimal_circuit is not None
-        
+
         final_state = Statevector(optimal_circuit)
         probs = final_state.probabilities_dict()
         t = time.time() - t0
-        # sort to have the best solution
-        sorted_probs = sorted(probs.items(), key=lambda item: item[1], reverse=True)
 
+        # On cherche la meilleure solution
+        sorted_probs = sorted(probs.items(), key=lambda item: item[1], reverse=True)
         best_sol, _ = sorted_probs[0]
-        # qiskit inverts the order of qubits
+
+        # qiskit inverse l'ordre des qubits
         best_sol = best_sol[::-1]
         best_x = [bool(int(i)) for i in best_sol]
+
+        # Calcul du score de la solution
         score = 0
         for j in range(self.m):
             value = sum(self.A[j][k] * best_x[k] for k in range(self.n)) % 2
             if value == self.b[j]:
                 score += 1
+        # On renvoie le temps si besoin
         if time_it:
             return (best_x, score, t)
         return (best_x, score)
@@ -224,7 +231,8 @@ class MaxXorSat:
             # print(qc)
             return qc.to_gate(label="Oracle")
 
-        def create_symmetry_gate():  # symétrie autour de la moyenne
+        # Porte de symétrie autour de la moyenne
+        def create_symmetry_gate():
             qc = QuantumCircuit(self.n)
             qc.h(range(self.n))
             qc.x(range(self.n))
@@ -241,7 +249,7 @@ class MaxXorSat:
         if len(L) == 0:
             # si classiquement on a pas de solution grover non plus ne trouvera pas de solution donc on peut déjà répondre "non" au problème de décision
             if time_it:
-                return (False, None, 0.0)
+                return ((False, None), 0.0)
             return (False, None)
         else:
             oracle_gate = create_oracle_gate(L)
@@ -260,8 +268,8 @@ class MaxXorSat:
             qc.h(qr)
             # oracle + symétrie nbr_iter fois
             for _ in range(nbr_iter):
-                qc.append(oracle_gate, qr)
-                qc.append(symmetry_gate, qr)
+                qc.append(oracle_gate, qr)  # pyright: ignore[reportArgumentType]
+                qc.append(symmetry_gate, qr)  # pyright: ignore[reportArgumentType]
 
             t0 = time.time()
             qc.measure(qr, cr)
@@ -277,7 +285,7 @@ class MaxXorSat:
                 counts.items(), key=lambda item: item[1], reverse=True
             )
             if time_it:
-                return (True, sorted_counts[0][0], t)
+                return ((True, sorted_counts[0][0]), t)
             return (True, sorted_counts[0][0])
             # return "oui" au problème de décision accompagné de la meilleure solution
 
@@ -287,23 +295,21 @@ class MaxXorSat:
         # on itère de m jusqu'à arriver à un k où on trouve au moins 1 solution
         t: float = 0.0
         if time_it:
-            (a, b, t0) = self.solve_decision_with_grover(k, True)  # pyright: ignore[reportAssignmentType]
-            result = (a, b)
-            t += t0
+            (result, dt) = self.solve_decision_with_grover(k, True)  # pyright: ignore[reportAssignmentType]
+            t += dt  # pyright: ignore[reportOperatorIssue]
         else:
             result = self.solve_decision_with_grover(k)
-        while not (result[0]):
+        while not (result[0]):  # pyright: ignore
             k -= 1
             if time_it:
-                (a, b, t0) = self.solve_decision_with_grover(k, True)  # pyright: ignore[reportAssignmentType]
-                result = (a, b)
-                t += t0
+                (result, dt) = self.solve_decision_with_grover(k, True)  # pyright: ignore[reportAssignmentType]
+                t += dt  # pyright: ignore[reportOperatorIssue]
             else:
                 result = self.solve_decision_with_grover(k)
-        best_x = [bool(int(i)) for i in result[1]]  # pyright: ignore[reportOptionalIterable]
+        best_x = [bool(int(i)) for i in result[1]]  # pyright: ignore
         score = k
         if time_it:
-            return (best_x, score, t)
+            return ((best_x, score), t)
         return (best_x, score)
 
 
@@ -326,6 +332,7 @@ def boolean_combinations(n: int) -> Generator[list[int], None, None]:
 # PARTIE 4 : EVALUATION DES ALGORITHMES
 
 
+# Création d'un problème aléatoire, que nos trois méthodes vont devoir résoudre
 def random_max_xor_sat(n: int, m: int) -> MaxXorSat:
     random_A: npt.NDArray[np.bool_] = np.random.choice([True, False], size=(m, n))
     random_B: npt.NDArray[np.bool_] = np.random.choice([True, False], size=m)
@@ -335,7 +342,14 @@ def random_max_xor_sat(n: int, m: int) -> MaxXorSat:
 def eval_max_xor_sat(samples: int = 100, max_size: int = 10, qaoa_reps=5):
     from joblib import Parallel, delayed
 
-    nms = product(*([range(2, max_size)] * 2))
+    nms = product(
+        *(
+            [
+                range(max(2, max_size - 3), max_size),
+                range(2, max_size),
+            ]
+        )
+    )
     d: dict[
         tuple[int, int], list[dict[str, dict[str, float | tuple[list[bool], int]]]]
     ] = {}
@@ -356,16 +370,15 @@ def eval_max_xor_sat(samples: int = 100, max_size: int = 10, qaoa_reps=5):
             results["qaoa"]["solution"] = (a, b)
             results["qaoa"]["elapsed"] = t
 
-            a, b, t = prob.solve_with_grover(True)  # pyright: ignore[reportAssignmentType]
-            results["grover"]["solution"] = (a, b)
-            results["grover"]["elapsed"] = t
+            results["grover"]["solution"], results["grover"]["elapsed"] = (  # pyright: ignore[reportAssignmentType]
+                prob.solve_with_grover(True)
+            )
 
             res.append(results)
         return ((n, m), res)
 
-    vals = Parallel(n_jobs=16)(delayed(eval_single)(nm) for nm in nms)
-
-    for (n, m), results in vals:  # pyright: ignore[reportGeneralTypeIssues]
+    vals = Parallel(n_jobs=5)(delayed(eval_single)(nm) for nm in nms)
+    for (n, m), results in vals:  # pyright: ignore
         d[(n, m)] = results
 
     return d
@@ -373,18 +386,5 @@ def eval_max_xor_sat(samples: int = 100, max_size: int = 10, qaoa_reps=5):
 
 # Testing MaxXorSat
 if __name__ == "__main__":
-
-    # exemple sur une instance simple
-    A = np.array([[1, 1, 1, 0], [1, 0, 1, 0], [1, 0, 0, 0]])
-    b = np.array([0, 1, 0])
-    max_xor_sat = MaxXorSat(A, b)
-
-    best_sol_enum = max_xor_sat.solve_enumerate()
-    print(best_sol_enum)
-    best_sol_qaoa = max_xor_sat.solve_with_qaoa(2, True)
-    print(best_sol_qaoa)
-    best_sol_grover = max_xor_sat.solve_with_grover(True)
-    print(best_sol_grover)
-
-    # exécution des 3 algorithmes sur un jeu de données d'instances aléatoires de taille allant de (2,2) à (9,9) attention c'est un long run !
-    # pprint.pp(eval_max_xor_sat(1, 10, 2))
+    # Pipe the output to "results.dict" to use viz.py
+    pprint.pp(eval_max_xor_sat(1, 6, 2))
