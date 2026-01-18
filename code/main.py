@@ -275,7 +275,7 @@ class MaxXorSat:
             qc.measure(qr, cr)
 
             sampler = Sampler()
-            job = sampler.run([qc], shots=20)
+            job = sampler.run([qc], shots=1000)
             data = job.result()[0].data
             counts = data.c.get_counts()  # pyright: ignore[reportAttributeAccessIssue]
 
@@ -386,5 +386,19 @@ def eval_max_xor_sat(samples: int = 100, max_size: int = 10, qaoa_reps=5):
 
 # Testing MaxXorSat
 if __name__ == "__main__":
+
+    # exemple sur une instance simple
+    A = np.array([[1, 1, 1, 0], [1, 0, 1, 0], [1, 0, 0, 0]])
+    b = np.array([0, 1, 0])
+    max_xor_sat = MaxXorSat(A, b)
+
+    best_sol_enum = max_xor_sat.solve_enumerate()
+    print(best_sol_enum)
+    best_sol_qaoa = max_xor_sat.solve_with_qaoa(2, True)
+    print(best_sol_qaoa)
+    best_sol_grover = max_xor_sat.solve_with_grover(True)
+    print(best_sol_grover)
+
+    # exécution des 3 algorithmes sur un jeu de données d'instances aléatoires de taille allant de (2,2) à (9,9) attention c'est un long run !
     # Pipe the output to "results.dict" to use viz.py
-    pprint.pp(eval_max_xor_sat(1, 6, 2))
+    # pprint.pp(eval_max_xor_sat(1, 6, 2))
