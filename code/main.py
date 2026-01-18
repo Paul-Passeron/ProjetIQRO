@@ -100,18 +100,23 @@ class MaxXorSat:
         prod: int = reduce(operator.mul, map(lambda x: 1 - 2 * x, xs))
         return (1 - prod) // 2
 
+    # QUESTION 9
     # Hamiltonien Hc
     def create_hamiltonian(self):
         if self._hamiltonian is None:
             pauli_list = []
+            # On traduit l'expression de l'hamiltonien de la Q7 sous forme de liste de chaîne de caractères de I et Z
             for j in range(self.m):
                 one_indices = np.where(self.A[j, :] == 1)[0]
                 pauli_str_list = ["I"] * self.n
+                # L'ordre est des portes inversées
                 for idx in one_indices:
                     pauli_str_list[self.n - 1 - idx] = "Z"
+                # pauli_str correspond au terme produit des Z_i
                 pauli_str = "".join(pauli_str_list)
                 coeff = -0.5 * ((-1) ** (self.b[j]))
                 pauli_list.append((pauli_str, coeff))
+                # id_str correspond au terme identité de l'expression
                 id_str = "I" * self.n
                 pauli_list.append((id_str, 0.5))
             self._hamiltonian = SparsePauliOp.from_list(pauli_list)
@@ -122,6 +127,7 @@ class MaxXorSat:
             assert self._hamiltonian is not None
         return self._hamiltonian
 
+    # On utilise le boîte noire pour qaoa de qiskit auquelle on fourni l'hamiltonien
     def create_circuit(self, reps: int):
         if self._qaoa_ansatz is None:
             self._qaoa_ansatz = QAOAAnsatz(cost_operator=self.hamiltonian(), reps=reps)
@@ -140,6 +146,7 @@ class MaxXorSat:
 
         init_params = 2 * np.pi * np.random.rand(num_params)
 
+        # fonction à optimiser pour l'optimiseur classique pour obtenir les meilleurs paramètres pour qaoa
         def cost_func(params):
             pub = [qaoa_ansatz, [self.hamiltonian()], [params]]
             estimator = StatevectorEstimator()
@@ -368,6 +375,6 @@ if __name__ == "__main__":
     A = np.array([[1, 1, 1, 0], [1, 0, 1, 0], [1, 0, 0, 0]])
     b = np.array([0, 1, 0])
     max_xor_sat = MaxXorSat(A, b)
-    best_sol = max_xor_sat.solve_with_grover()
-    print(best_sol)
+    # best_sol = max_xor_sat.solve_with_grover()
+    # print(best_sol)
     pprint.pp(eval_max_xor_sat(1, 10, 2))
